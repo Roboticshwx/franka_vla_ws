@@ -1,0 +1,9 @@
+<library path="vla_joint_impedance_controller">
+    <class name="vla_joint_impedance_controller/JointImpedanceController"
+        type="vla_joint_impedance_controller::JointImpedanceController"
+        base_class_type="controller_interface::ControllerInterface">
+        <description>
+            vla joint impedance control.
+        </description>
+    </class>
+</library>
