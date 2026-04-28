@@ -1,0 +1,9 @@
+<library path="move_to_start_controller">
+    <class name="move_to_start_controller/MoveToStartController"
+        type="move_to_start_controller::MoveToStartController"
+        base_class_type="controller_interface::ControllerInterface">
+        <description>
+            Move to Start Position.
+        </description>
+    </class>
+</library>

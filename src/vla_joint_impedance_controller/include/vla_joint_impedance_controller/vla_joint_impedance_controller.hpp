@@ -8,7 +8,7 @@
 #include <controller_interface/controller_interface.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include "realtime_tools/realtime_buffer.h"
+#include "realtime_tools/realtime_buffer.hpp"
 #include "franka_vla_interfaces/msg/action_chunk.hpp"
 
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -47,6 +47,16 @@ class JointImpedanceController : public controller_interface::ControllerInterfac
     Vector7d d_gains_;
     double elapsed_time_{0.0};
     void updateJointStates();
+
+    // 滤波之后的状态变量
+    Vector7d q_goal_filtered_;
+    Vector7d dq_goal_filtered_;
+
+    Vector7d target_q_last_; // 用于存储上一个目标位置
+
+    double target_filter_beta_ = 0.08; // 滤波器的平滑系数, 对应的截止频率约为12Hz左右
+
+    bool is_first_chunk_ = true; // 用于初始化滤波器
 
     // 声明订阅器指针
     rclcpp::Subscription<franka_vla_interfaces::msg::ActionChunk>::SharedPtr action_chunk_sub_;

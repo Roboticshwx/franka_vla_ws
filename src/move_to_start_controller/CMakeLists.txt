@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(vla_joint_impedance_controller)
+project(move_to_start_controller)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -21,25 +21,18 @@ find_package(moveit_msgs REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(franka_vla_interfaces REQUIRED)
-find_package(realtime_tools REQUIRED)
-
-add_executable(chunk_subscriber src/action_subscriber_test.cpp)
 
 add_library(
         ${PROJECT_NAME}
         SHARED
-        src/vla_joint_impedance_controller.cpp
-        src/action_subscriber_test.cpp
+        src/move_to_start_controller.cpp
 )
-
 target_include_directories(
         ${PROJECT_NAME}
         PUBLIC
         include
         ${EIGEN3_INCLUDE_DIRS}
 )
-
 ament_target_dependencies(
         ${PROJECT_NAME}
         controller_interface
@@ -53,21 +46,11 @@ ament_target_dependencies(
         rclcpp
         rclcpp_lifecycle
         std_srvs
-        franka_vla_interfaces
-        realtime_tools
 )
-
-ament_target_dependencies(
-  chunk_subscriber
-  rclcpp
-  franka_vla_interfaces
-)
-
 
 pluginlib_export_plugin_description_file(
         controller_interface 
-        controllers_plugin.xml
-)
+        controllers_plugin.xml)
 
 install(
         TARGETS
@@ -76,14 +59,6 @@ install(
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
 )
-
-
-install(
-        TARGETS chunk_subscriber
-        DESTINATION lib/${PROJECT_NAME}
-)
-
-
 
 install(
         DIRECTORY include/
@@ -100,6 +75,19 @@ install(DIRECTORY utils/
   FILES_MATCHING PATTERN "*.py"
 )
 
+# PTP Motion example executable (binary)
+add_executable(ptp_motion_example_node
+    src/async_motions/ptp_motion_example_node.cpp)
+
+target_include_directories(ptp_motion_example_node PRIVATE include ${EIGEN3_INCLUDE_DIRS})
+
+ament_target_dependencies(ptp_motion_example_node
+    rclcpp
+    rclcpp_action
+    franka_msgs)
+
+install(TARGETS ptp_motion_example_node
+    RUNTIME DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

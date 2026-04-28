@@ -34,22 +34,73 @@ JointImpedanceController::state_interface_configuration() const {
 }
 
 controller_interface::return_type JointImpedanceController::update(
-    const rclcpp::Time& /*time*/,
-    const rclcpp::Duration& period) {
-  updateJointStates();
-  Vector7d q_goal = initial_q_;
-  elapsed_time_ = elapsed_time_ + period.seconds();
+    const rclcpp::Time& time,
+    const rclcpp::Duration&) {
+  
+  updateJointStates(); // 更新机械臂状态, 获取当前 q_ 和 dq_
 
-  double delta_angle = M_PI / 8.0 * (1 - std::cos(M_PI / 2.5 * elapsed_time_));
-  q_goal(3) += delta_angle;
-  q_goal(4) += delta_angle;
+  Vector7d q_goal_raw = q_;
+  Vector7d dq_goal_raw = Vector7d::Zero();
 
-  const double kAlpha = 0.99;
-  dq_filtered_ = (1 - kAlpha) * dq_filtered_ + kAlpha * dq_;
-  Vector7d tau_d_calculated =
-      k_gains_.cwiseProduct(q_goal - q_) + d_gains_.cwiseProduct(-dq_filtered_);
+  // 从缓冲区读取最新的指针
+  auto cmd_ptr = rt_command_buffer_.readFromRT();
+  if (!cmd_ptr || !(*cmd_ptr) || !(*cmd_ptr)->valid) {
+    q_goal_raw = target_q_last_; // 异常排除
+  } else {
+    // vla的核心逻辑
+
+    auto cmd = *cmd_ptr;
+
+    // 时间定义
+    const double dt_chunk = 0.02;
+    double max_duration = (cmd->chunk_size - 1) * dt_chunk;
+
+    // 计算当前时间与指令起始时间的偏移
+    rclcpp::Time cmd_time(cmd->stamp);
+    double t_offset = (time - cmd_time).seconds();
+
+    if (t_offset < 0.0) {
+      for (int i=0; i < num_joints; ++i) {
+        q_goal_raw(i) = cmd->data[i];
+      }
+    } else if (t_offset >= max_duration) { // 异常保护, 大模型推理卡死或网络断开, 指令耗尽
+      int last_idx = cmd->chunk_size - 1;
+      for (int i=0; i < num_joints; ++i) {
+        q_goal_raw(i) = cmd->data[last_idx * cmd->action_dim + i];
+      }
+    } else {
+
+      int idx = std::floor(t_offset / dt_chunk);
+      int next_idx = idx + 1;
+      // 计算两个插值点之间的比例
+      double alpha = (t_offset - idx * dt_chunk) / dt_chunk;
+      for (int i=0; i < num_joints; ++i) {
+        double q_0 = cmd->data[idx * cmd->action_dim + i];
+        double q_1 = cmd->data[next_idx * cmd->action_dim + i];
+
+        q_goal_raw(i) = (1.0 - alpha) * q_0 + alpha * q_1;
+        dq_goal_raw(i) = (q_1 - q_0) / dt_chunk;
+      }
+    }
+  }
+
+  if (is_first_chunk_) {
+    q_goal_filtered_ = q_goal_raw;
+    dq_goal_filtered_ = dq_goal_raw;
+    is_first_chunk_ = false;
+  } else {
+    q_goal_filtered_ = (1.0 - target_filter_beta_) * q_goal_filtered_ + target_filter_beta_ * q_goal_raw;
+    dq_goal_filtered_ = (1.0 - target_filter_beta_) * dq_goal_filtered_ + target_filter_beta_ * dq_goal_raw;
+  }
+
+  target_q_last_ = q_goal_raw;
+
+  const double KAlpha = 0.1; // 低通滤波系数
+  dq_filtered_ = (1.0 - KAlpha) * dq_filtered_ + KAlpha * dq_;
+
+  Vector7d tau_d_calculated = k_gains_.cwiseProduct(q_goal_filtered_ - q_) + d_gains_.cwiseProduct(dq_goal_filtered_ - dq_filtered_);
   for (int i = 0; i < num_joints; ++i) {
-    command_interfaces_[i].set_value(tau_d_calculated(i));
+    command_interfaces_.at(i).set_value(tau_d_calculated(i));
   }
   return controller_interface::return_type::OK;
 }
@@ -128,6 +179,11 @@ CallbackReturn JointImpedanceController::on_activate(
   initial_q_ = q_;
   elapsed_time_ = 0.0;
 
+  target_q_last_ = q_;
+  q_goal_filtered_ = q_;
+  dq_goal_filtered_.setZero();
+  is_first_chunk_ = true;
+
   return CallbackReturn::SUCCESS;
 }
 
@@ -135,22 +191,14 @@ CallbackReturn JointImpedanceController::on_activate(
 void JointImpedanceController::action_chunk_callback(
   const franka_vla_interfaces::msg::ActionChunk::SharedPtr msg)
 {
-  rclcpp::Time now = get_node()->get_clock()->now();
-  rclcpp::Time msg_time(msg->header.stamp);
-  double latency_ms = (now - msg_time).seconds() * 1000.0;
+  auto cmd = std::make_shared<ActionChunkCmd>();
+  cmd->stamp = msg->header.stamp;
+  cmd->data = msg->data;
+  cmd->chunk_size = msg->chunk_size;
+  cmd->action_dim = msg->action_dim;
 
-  double first_step_first_joint = msg->data[0 * msg->action_dim + 0];
-
-  RCLCPP_INFO_THROTTLE(
-    get_node()->get_logger(),
-    *get_node()->get_clock(),
-    1000,
-    "接收到 ActionChunk! 形状: [%d x %d], 延迟: %.2f ms, 坐标系: %s, 步骤0关节0位置: %.4f",
-    msg->chunk_size,
-    msg->action_dim,
-    latency_ms,
-    msg->header.frame_id.c_str(),
-    first_step_first_joint);
+  cmd->valid = true;
+  rt_command_buffer_.writeFromNonRT(cmd); // 推入缓冲区
 }
 
 void JointImpedanceController::updateJointStates() {

@@ -33,28 +33,35 @@ class ActionChunkPublisher(Node):
         msg.chunk_size = self.chunk_size
         msg.action_dim = self.action_dim
 
-        # 生成当前时刻的action chunk
+        # 生成每个控制步的时间戳
         future_times = self.current_time_sec + np.arange(self.chunk_size)*self.dt
+        
+        # 初始化所有关节位置为0
         chunk_data = np.zeros((self.chunk_size, self.action_dim))
 
-        # 这里为了方便验证, 先给每个关节生成余弦轨迹
-        for j in range(self.action_dim):
-            chunk_data[:, j] = 0.5 * np.cos(2.0 * np.pi * 0.1 * future_times + j * 0.2)
+        # 用于测试用的假曲线, 在余弦函数上进行50Hz的采样
+        freq = 0.2
+        amplitude = 1.2
+        safe_trajectory = amplitude * (1.0 - np.cos(2.0 * np.pi * freq * future_times))
 
-        # 将二维矩阵展平为一维的list
+        # 只控制关节3和关节5进行运动
+        if self.action_dim >= 5:
+            chunk_data[:, 2] = safe_trajectory
+            chunk_data[:, 4] = safe_trajectory
+
+        # 将二维数据展平
         msg.data = chunk_data.flatten().tolist()
 
         # 发布消息
         self.publisher_.publish(msg)
 
-        # 限制日志输出频率, 每1.0秒输出一次, 防止刷屏
         self.get_logger().info(
-            f'Published chunk at internal time t={self.current_time_sec:.2f}s, '
-            f'first joint first step pos: {chunk_data[0,0]:.4f}', 
+            f'Published chunk at t={self.current_time_sec:.2f}s, '
+            f'Joint 3&5 pos: {chunk_data[0, 2]:.4f} rad',
             throttle_duration_sec=1.0
         )
 
-        # 推进时间
+        # 推进内部时钟
         self.current_time_sec += self.dt
 
 
