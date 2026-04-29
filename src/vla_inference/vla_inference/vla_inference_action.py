@@ -2,6 +2,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 import numpy as np
+import math
 
 from franka_vla_interfaces.msg import ActionChunk
 
@@ -36,12 +37,21 @@ class ActionChunkPublisher(Node):
         # 生成每个控制步的时间戳
         future_times = self.current_time_sec + np.arange(self.chunk_size)*self.dt
         
-        # 初始化所有关节位置为0
-        chunk_data = np.zeros((self.chunk_size, self.action_dim))
+        # 初始化所有关节位置
+        base_config = np.array([
+            0.0,
+            -math.pi / 4.0,
+            0.0,
+            -3.0 * math.pi / 4.0,
+            0.0,
+            math.pi /2.0,
+            math.pi / 4.0
+        ])
+        chunk_data =np.tile(base_config, (self.chunk_size, 1))
 
         # 用于测试用的假曲线, 在余弦函数上进行50Hz的采样
         freq = 0.2
-        amplitude = 1.2
+        amplitude = 0.8
         safe_trajectory = amplitude * (1.0 - np.cos(2.0 * np.pi * freq * future_times))
 
         # 只控制关节3和关节5进行运动

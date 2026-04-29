@@ -105,7 +105,7 @@ def generate_robot_nodes(context):
             package='controller_manager',
             executable='spawner',
             namespace=namespace,
-            arguments=['joint_impedance_controller'], # 修改这里为自己的控制器的标识名
+            arguments=['move_to_start_controller'], # 修改这里为自己的控制器的标识名
             output='screen'
         ),
         IncludeLaunchDescription(
