@@ -137,7 +137,9 @@ def generate_robot_nodes(context):
 def generate_launch_description():
     launch_args = [
         DeclareLaunchArgument(
-            'robot_type', default_value='', description='ID of the type of arm used'
+            'robot_type', 
+            default_value='fr3', 
+            description='ID of the type of arm used'
         ),
         DeclareLaunchArgument(
             'arm_prefix', default_value='', description='Prefix for arm topics'
@@ -147,7 +149,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'robot_ip',
-            default_value='172.16.0.3',
+            default_value='192.168.8.2',
             description='Hostname or IP address of the robot',
         ),
         DeclareLaunchArgument(
